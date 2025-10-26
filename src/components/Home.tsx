@@ -29,7 +29,7 @@ const Home: React.FC = () => {
   // 天気情報を取得する関数
   const fetchWeatherData = async () => {
     try {
-      const apiKey = ''; // APIキーをhttps://openweathermap.org/api ここから会員登録して取得してください
+      const apiKey = '70a0230768886186b9e5bbe42555918c'; // APIキーをhttps://openweathermap.org/api ここから会員登録して取得してください
       const city = 'Nagasaki'; // 長崎
       const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${apiKey}&units=metric`;
       const currentWeatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
