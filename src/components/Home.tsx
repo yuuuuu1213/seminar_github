@@ -51,12 +51,21 @@ const Home: React.FC = () => {
       setCurrentWeather(currentWeatherData);
 
       setError(null); // エラーをクリア
-    } catch (err: any) {
-      console.error('Error fetching weather data:', err);
-      setError(err.message);
-      setForecastData(null); // データをリセット
-      setCurrentWeather(null);
-    }
+    } catch (err: unknown) { // 1. (err: any) を (err: unknown) に変更
+        console.error('Error fetching weather data:', err);
+  
+        let message = '不明なエラーが発生しました'; // デフォルトのエラーメッセージ
+
+        // 2. 'err' が 'Error' オブジェクトのインスタンスであるかを確認
+        if (err instanceof Error) {
+        // 3. Error インスタンスであれば、安全に .message プロパティにアクセス
+        message = err.message;
+      
+        setError(message); // 4. 抽出したメッセージをセット
+        setForecastData(null); // データをリセット
+        setCurrentWeather(null);
+        }
+      };
   };
 
   useEffect(() => {
