@@ -79,19 +79,32 @@ const Env: React.FC = () => {
   const getCellColor = (value: number | null): string => {
     if (value === null) return '#ccc'; // データがない場合は灰色
   
-    const alpha = Math.min(1, Math.abs(value)); // アルファ値は0.0～1.0に制限
+    let alpha = 0.0; // alphaをswitch内で計算するように変更
   
     switch (selectedDataType) {
-      case 'temperature':
+      case 'temperature':{
+        // --- 修正箇所 ---
+        // 温度の「最大絶対値」を仮に 20.0 と設定
+        const MAX_TEMP_ABS = 40.0; 
+        alpha = Math.min(1, Math.abs(value) / MAX_TEMP_ABS);
+        // ---------------
+
         // 温度: 負の値は青、正の値は赤
         return value < 0
-          ? `rgba(0, 0, 255, ${alpha})` // 負の値は青系
-          : `rgba(255, 0, 0, ${alpha})`; // 正の値は赤系
-  
-      case 'humidity':
-        // 湿度: 負の値も青系、正の値も青系（濃淡で変化）
-        return `rgba(0, 0, 255, ${alpha})`; // 常に青の濃淡で表示
-  
+        ? `rgba(0, 0, 255, ${alpha})` // 負の値は青系
+        : `rgba(255, 0, 0, ${alpha})`; // 正の値は赤系
+      }
+
+      case 'humidity':{
+        // --- 修正箇所 ---
+        // 湿度データも正規化が必要な場合、同様に基準値を設定
+        const MAX_HUMID_ABS = 80.0; 
+        alpha = Math.min(1, Math.abs(value) / MAX_HUMID_ABS);
+
+        // 湿度: 常に青の濃淡で表示
+        return `rgba(0, 0, 255, ${alpha})`; 
+      }
+
       default:
         return '#ccc'; // デフォルトは灰色
     }
