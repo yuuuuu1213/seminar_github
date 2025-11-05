@@ -26,23 +26,69 @@ const Image: React.FC = () => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // <-- 修正: 提供されたCSV(x,y,left_path,right_path)の形式に対応
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
         const csvData = reader.result as string;
-        const parsed = csvData
-          .split('\n')
-          .map((row) => row.split(','))
-          .filter((row) => row.length >= 4) // 無効な行を除外
-          .map(([x, y, sideValue, srcValue]) => ({
-            x: parseInt(x),
-            y: parseInt(y),
-            images: [
-              { side: sideValue.trim() as 'left' | 'right', src: `/images/${srcValue.trim()}` },
-            ],
-          }));
+
+        // (x, y) でグループ化するためのMap
+        const groupedData = new Map<string, GridCell>();
+        const rows = csvData.split('\n');
+
+        // ヘッダー行をスキップ (i = 1 から開始)
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i].split(',');
+
+          // 4列未満または空行はスキップ
+          if (row.length < 4 || row.every((field) => field.trim() === '')) {
+            continue;
+          }
+
+          // CSVの列を正しくマッピング
+          const [xStr, yStr, leftPath, rightPath] = row;
+
+          const x = parseInt(xStr);
+          const y = parseInt(yStr);
+
+          if (isNaN(x) || isNaN(y)) {
+            continue; // x, y が不正な場合はスキップ
+          }
+
+          const key = `${x}-${y}`;
+
+          // (x, y) ごとに1行しかない前提
+          if (!groupedData.has(key)) {
+            groupedData.set(key, {
+              x: x,
+              y: y,
+              images: [], // 空の配列で初期化
+            });
+          }
+
+          const cell = groupedData.get(key)!;
+
+          // leftPath が空でない場合のみ追加
+          if (leftPath && leftPath.trim() !== '') {
+            cell.images.push({
+              side: 'left',
+              src: `/images/${leftPath.trim()}`,
+            });
+          }
+
+          // rightPath が空でない場合のみ追加
+          if (rightPath && rightPath.trim() !== '') {
+            cell.images.push({
+              side: 'right',
+              src: `/images/${rightPath.trim()}`,
+            });
+          }
+        }
+
+        const parsed: GridCell[] = Array.from(groupedData.values());
+        console.log('Parsed Data:', parsed); // デバッグ用
         setParsedData(parsed);
       };
       reader.readAsText(file);
@@ -56,64 +102,80 @@ const Image: React.FC = () => {
   };
 
   const handleImageChange = (direction: 'next' | 'prev') => {
-    if (currentPosition) {
-      const images = getCurrentImages(); // 現在のセクション内の全画像を取得
-      const currentSide = getCurrentImage()?.side; // 現在の画像の種類 ('left' または 'right')
-      console.log('Current Side:', currentSide); // デバッグ用
-  
-      if (currentSide) {
-        // 現在の種類で画像をフィルタリング
-        const filteredImages = images.filter((img) => img.side === currentSide);
-        console.log('Filtered Images:', filteredImages); // デバッグ用
-  
-        // 現在表示中の画像のインデックスを取得
-        const currentIndex = filteredImages.findIndex(
-          (img) => img.src === getCurrentImage()?.src
-        );
-        console.log('Current Index:', currentIndex); // デバッグ用
-  
-        if (currentIndex !== -1) {
-          // 新しいインデックスを計算
-          const newIndex =
-            direction === 'next'
-              ? (currentIndex + 1) % filteredImages.length
-              : (currentIndex - 1 + filteredImages.length) % filteredImages.length;
-  
-          // 新しい画像を取得
-          const newImage = filteredImages[newIndex];
-          console.log('New Image:', newImage); // デバッグ用
-  
-          // 全体のインデックスではなく、セクション内の画像リストに基づいて切り替え
-          const newGlobalIndex = images.findIndex(
-            (img) => img.src === newImage.src
-          );
-  
-          // インデックスを更新
-          setCurrentImageIndex(newGlobalIndex);
-          console.log('New Global Index:', newGlobalIndex); // デバッグ用
-        }
-      }
-    }
+    if (!currentPosition) return;
+
+    // data (グリッド全体) を 1次元の配列に平坦化
+    const flatGrid = data.flat();
+
+    // 現在のセルのインデックスを flatGrid から探す
+    const currentIndex = flatGrid.findIndex(
+      (cell) => cell.x === currentPosition.x && cell.y === currentPosition.y
+    );
+
+    if (currentIndex === -1) return; // 見つからない場合は何もしない
+
+    // 次または前のセルのインデックスを計算
+    const newIndex =
+      direction === 'next'
+        ? (currentIndex + 1) % flatGrid.length
+        : (currentIndex - 1 + flatGrid.length) % flatGrid.length;
+
+    // 次のセル情報を取得
+    const nextCell = flatGrid[newIndex];
+
+    // 現在位置を次のセルに更新
+    setCurrentPosition({ x: nextCell.x, y: nextCell.y });
+    
+    // 新しいセルに移動したので、表示する画像インデックスを 0 にリセット
+    setCurrentImageIndex(0);
   };
   
-  
+  // <-- 追加: 左右切り替え用の関数
+  const handleSideChange = () => {
+    const images = getCurrentImages();
+    const currentImg = getCurrentImage();
+    if (!currentImg) return;
 
+    const currentSide = currentImg.side;
+    const targetSide = currentSide === 'left' ? 'right' : 'left';
+
+    // ターゲットサイドの最初の画像を探す
+    const targetImageIndex = images.findIndex(img => img.side === targetSide);
+
+    if (targetImageIndex !== -1) {
+      // ターゲットサイドの画像が見つかったら、そのインデックスに設定
+      setCurrentImageIndex(targetImageIndex);
+    } else {
+      // ターゲットサイドの画像がない場合
+      console.warn(`No images found for side: ${targetSide}`);
+    }
+  };
+
+  // <-- 修正: パースロジック変更に伴い、find を使うように最適化
   const getCurrentImages = (): { side: 'left' | 'right'; src: string }[] => {
     if (currentPosition) {
       const { x, y } = currentPosition;
-      // 現在のセクションに属するすべてのセルの画像を取得
-      const sectionCells = parsedData.filter((cell) => cell.x === x && cell.y === y);
-      return sectionCells.flatMap((cell) => cell.images); // すべての画像を平坦化してリスト化
+      // (x, y) に一致するセルを探す
+      const sectionCell = parsedData.find((cell) => cell.x === x && cell.y === y);
+      
+      if (sectionCell) {
+        return sectionCell.images; // そのセルの画像配列を返す
+      }
     }
     return [];
   };
   
-  
 
   const getCurrentImage = (): { side: 'left' | 'right'; src: string } | undefined => {
     const images = getCurrentImages();
-    if (images.length > 0 && currentImageIndex < images.length) {
-      return images[currentImageIndex];
+    // インデックスが範囲外になった場合、0に戻すか、最初の画像を選択する
+    let indexToUse = currentImageIndex;
+    if (currentImageIndex >= images.length || currentImageIndex < 0) {
+      indexToUse = 0; 
+    }
+
+    if (images.length > 0) {
+      return images[indexToUse];
     }
     return undefined;
   };
@@ -209,6 +271,7 @@ const Image: React.FC = () => {
             alignItems: 'center',
             flexDirection: 'column',
             color: 'white',
+            zIndex: 1000, // zIndexを追加して最前面に
           }}
         >
           {/* 閉じるボタン */}
@@ -224,6 +287,7 @@ const Image: React.FC = () => {
               borderRadius: '5px',
               cursor: 'pointer',
               fontSize: '16px',
+              border: 'none', // 枠線を削除
             }}
           >
             Close
@@ -279,14 +343,10 @@ const Image: React.FC = () => {
       padding: '5px 10px',
       borderRadius: '5px',
       cursor: 'pointer',
+      left: '50%',
+      transform: 'translateX(-50%)',
     }}
-    onClick={() => {
-      if (getCurrentImage()?.side === 'left') {
-        setCurrentImageIndex(1); // Right Image
-      } else {
-        setCurrentImageIndex(0); // Left Image
-      }
-    }}
+    onClick={handleSideChange}
   >
     {getCurrentImage()?.side === 'left' ? 'Left Image' : 'Right Image'}
   </div>
@@ -324,6 +384,7 @@ const Image: React.FC = () => {
       cursor: 'pointer',
       fontSize: '16px',
       boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)', // ボタンの視認性を向上
+      border: 'none', // 枠線を削除
     }}
   >
     <FaArrowLeft />
@@ -339,6 +400,7 @@ const Image: React.FC = () => {
       cursor: 'pointer',
       fontSize: '16px',
       boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)', // ボタンの視認性を向上
+      border: 'none', // 枠線を削除
     }}
   >
     <FaArrowRight />
