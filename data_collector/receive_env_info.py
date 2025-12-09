@@ -14,7 +14,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # --- データベースモデル ---
-class TemperatureMeasurement(db.Model):
+class EnvironmentalInformation(db.Model):
     __tablename__ = 'measurements'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -39,7 +39,7 @@ def receive_data():
         print(f"[LOG] Received data: {data}")
 
         # 2. データベースへ保存
-        new_record = TemperatureMeasurement(
+        new_record = EnvironmentalInformation(
             date=data['date'],
             temperature=data['temperature'],
             humidity=data['humidity'],
