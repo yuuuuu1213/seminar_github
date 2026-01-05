@@ -110,7 +110,7 @@ def get_images():
     image_list = [{
         "id": img.id,
         "side": 'left' if 'left' in img.filename.lower() else 'right',
-        "url": f"http://localhost:5000/api/image/{img.id}"
+        "url": f"https://unradiant-wadable-freeman.ngrok-free.dev/api/image/{img.id}"
     } for img in images]
     return jsonify(image_list)
 
