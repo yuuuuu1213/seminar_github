@@ -101,6 +101,25 @@ def receive_data():
         db.session.rollback()
         print(f"[ERROR] {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+# --- 追加：画像一覧を取得するAPI ---
+@app.route('/api/images', methods=['GET'])
+def get_images():
+    images = ImageStorage.query.order_by(ImageStorage.id).all()
+    # ファイル名から'left'か'right'かを判別し、IDと一緒に返す
+    image_list = [{
+        "id": img.id,
+        "side": 'left' if 'left' in img.filename.lower() else 'right',
+        "url": f"http://localhost:5000/api/image/{img.id}"
+    } for img in images]
+    return jsonify(image_list)
+
+# --- 追加：画像バイナリを返すAPI ---
+from flask import send_file
+@app.route('/api/image/<int:image_id>')
+def get_image_data(image_id):
+    img = ImageStorage.query.get_or_404(image_id)
+    return send_file(io.BytesIO(img.data), mimetype='image/jpeg')
 
 # --- 初期化とサーバー起動 ---
 if __name__ == '__main__':
