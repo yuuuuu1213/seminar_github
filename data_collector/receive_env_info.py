@@ -2,9 +2,11 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
 import io
+from flask_cors import CORS
 
 # --- 設定 ---
 app = Flask(__name__)
+CORS(app)  # CORSを有効化
 
 # データベースファイルのパス設定
 basedir = os.path.abspath(os.path.dirname(__file__))
