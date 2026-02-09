@@ -193,7 +193,7 @@ export default function PanoramaView() {
   const moveRight = () => setTargetCameraX(prev => prev + moveStep);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', height: '100dvh', background: '#000', overflow: 'hidden', position: 'relative' }}>
+    <div style={{ width: '100vw', height: '100dvh', background: '#000', overflow: 'hidden', position: 'relative' }}>
       
       <Canvas>
         <PerspectiveCamera 
