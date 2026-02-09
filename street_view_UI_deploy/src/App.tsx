@@ -70,7 +70,7 @@ const processImagesForPanorama = (logs: typeof RAW_LOGS) => {
     accumulatedX -= log.dx;
     result.push({
       id: i,
-      url: `/images/left/${log.filename}`,
+      url: `images/left/${log.filename}`,
       position: [accumulatedX, 0, 0] as [number, number, number],
       filename: log.filename
     });
