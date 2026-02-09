@@ -6,16 +6,20 @@ import * as THREE from 'three';
 // --- 1. 設定 ---
 const IMAGE_WIDTH = 320; 
 const IMAGE_HEIGHT = 240;
+// カメラの視野角(FOV)
+const CAMERA_FOV = 50;
 
-// 移動量
-const MOVE_STEP = 100; 
+//カメラ距離の計算
+const CAMERA_Z = (IMAGE_HEIGHT / 2) / Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV / 2));
+// 少し余裕を持たせるために微調整
+const ADJUSTED_CAMERA_Z = CAMERA_Z * 1.1;
 
 // カメラに「映っている」とみなす範囲
-const VISIBLE_THRESHOLD = IMAGE_WIDTH * 0.8; 
+const VISIBLE_THRESHOLD = IMAGE_WIDTH * 1.2; 
 
 // 透明度設定
-const OPACITY_VISIBLE = 0.8;
-const OPACITY_INVISIBLE = 0.2;
+const OPACITY_VISIBLE = 1.0;
+const OPACITY_INVISIBLE = 0.0;
 
 // AKAZEログデータ
 const RAW_LOGS = [
@@ -65,9 +69,17 @@ const RAW_LOGS = [
 const processImagesForPanorama = (logs: typeof RAW_LOGS) => {
   const result = [];
   let accumulatedX = 0;
+  // 【改良点2】平均移動量の計算用にdxの絶対値を収集
+  const dxValues: number[] = [];
+  
   for (let i = 0; i < logs.length; i++) {
     const log = logs[i];
+    
     accumulatedX -= log.dx;
+
+    // 最初のデータ(dx=0)以外を収集
+    if (i > 0) dxValues.push(Math.abs(log.dx));
+
     result.push({
       id: i,
       url: `${import.meta.env.BASE_URL}images/left/${log.filename}`,
@@ -75,7 +87,13 @@ const processImagesForPanorama = (logs: typeof RAW_LOGS) => {
       filename: log.filename
     });
   }
-  return result;
+
+  // 平均移動量を計算（データがない場合はデフォルト値を使用）
+  const avgDx = dxValues.length > 0 
+    ? dxValues.reduce((a, b) => a + b, 0) / dxValues.length 
+    : IMAGE_WIDTH;
+
+  return { processedData: result, moveStep: avgDx };
 };
 
 // --- 3. 表示コンポーネント ---
@@ -88,7 +106,7 @@ const CameraRig = ({ targetX }: { targetX: number }) => {
   useFrame((_, delta) => {
     // 現在のX座標から目標のX座標へ、少しずつ近づける（線形補間: Lerp）
     // 第3引数の数値を大きくすると速く、小さくすると遅く（粘り強く）なります
-    const dampSpeed = 5 * delta;
+    const dampSpeed = 8 * delta;
     
     // カメラの移動
     const currentX = camera.position.x;
@@ -137,7 +155,9 @@ const ImagePanel = ({ url, position, index }: {
     // 現在の透明度から目標の透明度へ滑らかに変化させる（任意）
     // 瞬時に切り替えたい場合は meshRef.current.material.opacity = targetOpacity; だけでもOK
     const material = meshRef.current.material as THREE.Material;
-    material.opacity = THREE.MathUtils.lerp(material.opacity, targetOpacity, 0.1);
+    material.opacity = THREE.MathUtils.lerp(material.opacity, targetOpacity, 0.2);
+    // 完全に透明になったら描画自体をスキップして負荷を下げる
+    meshRef.current.visible = material.opacity > 0.01;
   });
 
   return (
@@ -158,7 +178,7 @@ const ImagePanel = ({ url, position, index }: {
 // --- 4. メインコンポーネント ---
 
 export default function PanoramaView() {
-  const processedData = useMemo(() => processImagesForPanorama(RAW_LOGS), []);
+  const { processedData, moveStep } = useMemo(() => processImagesForPanorama(RAW_LOGS), []);
   
   const minX = Math.min(...processedData.map(d => d.position[0]));
   const maxX = Math.max(...processedData.map(d => d.position[0]));
@@ -169,17 +189,16 @@ export default function PanoramaView() {
   // カメラの実際の座標（Current）はCameraRig内でLerp計算される。
   const [targetCameraX, setTargetCameraX] = useState(minX);
 
-  const moveLeft = () => setTargetCameraX(prev => prev - MOVE_STEP);
-  const moveRight = () => setTargetCameraX(prev => prev + MOVE_STEP);
+  const moveLeft = () => setTargetCameraX(prev => prev - moveStep);
+  const moveRight = () => setTargetCameraX(prev => prev + moveStep);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#000', overflow: 'hidden', position: 'relative' }}>
+    <div style={{ width: '100vw', height: '100vh', height: '100dvh', background: '#000', overflow: 'hidden', position: 'relative' }}>
       
       <Canvas>
         <PerspectiveCamera 
           makeDefault 
-          // 初期位置はminXに設定
-          position={[minX, 0, IMAGE_WIDTH * 1.5]} 
+          position={[minX, 0, ADJUSTED_CAMERA_Z]} 
           fov={50} 
           far={100000} 
         />
@@ -190,13 +209,16 @@ export default function PanoramaView() {
           dampingFactor={0.1}
           target={[minX, 0, 0]} 
           enablePan={false} 
+          enableZoom={false} // スマホでの誤操作防止のためズームを無効化
+          enableRotate={false} // 回転も無効化して視点を固定
         />
 
         {/* State(目標値)を渡して、内部で滑らかに移動させる */}
         <CameraRig targetX={targetCameraX} />
 
-        <color attach="background" args={['#111']} />
-        <ambientLight intensity={2} />
+        <color attach="background" args={['#000']} />
+        {/* 画像をくっきり見せるため環境光を強めに */}
+        <ambientLight intensity={3} />
 
         <Grid 
           position={[centerX, -IMAGE_HEIGHT / 2 - 200, 0]} 
@@ -220,13 +242,15 @@ export default function PanoramaView() {
         ))}
       </Canvas>
 
-      <div style={uiContainerStyle}>
-        <button style={arrowButtonStyle} onClick={moveLeft}>←</button>
-        <div style={labelStyle}>
-          Target: {Math.round(targetCameraX)} <br/>
-          <span style={{fontSize:'10px', color:'#888'}}>Step: {MOVE_STEP}px</span>
-        </div>
-        <button style={arrowButtonStyle} onClick={moveRight}>→</button>
+      {/* スマホ用UI配置 (左右分割) */}
+      {/* 左ボタンエリア */}
+      <div style={leftUiStyle} onClick={moveLeft}>
+        <div style={arrowButtonStyle}>←</div>
+      </div>
+      
+      {/* 右ボタンエリア */}
+      <div style={rightUiStyle} onClick={moveRight}>
+        <div style={arrowButtonStyle}>→</div>
       </div>
 
     </div>
@@ -234,39 +258,40 @@ export default function PanoramaView() {
 }
 
 // --- CSS Styles ---
-const uiContainerStyle: React.CSSProperties = {
-  position: 'absolute',
-  bottom: '30px',
-  left: '50%',
-  transform: 'translateX(-50%)',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '20px',
-  zIndex: 10,
-  background: 'rgba(0,0,0,0.7)',
-  padding: '10px 20px',
-  borderRadius: '30px',
-  border: '1px solid #444'
-};
-
+// 共通のボタンスタイル
 const arrowButtonStyle: React.CSSProperties = {
-  width: '50px',
-  height: '50px',
+  width: '60px',
+  height: '60px',
   borderRadius: '50%',
-  border: '2px solid #fff',
-  background: '#333',
+  background: 'rgba(50, 50, 50, 0.8)',
   color: '#fff',
-  fontSize: '24px',
-  cursor: 'pointer',
+  fontSize: '32px',
   display: 'flex',
   justifyContent: 'center',
   alignItems: 'center',
-  transition: 'background 0.2s'
+  boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+  backdropFilter: 'blur(4px)',
+  // スマホでのタップ時のハイライトを無効化
+  WebkitTapHighlightColor: 'transparent',
+  userSelect: 'none',
 };
 
-const labelStyle: React.CSSProperties = {
-  color: '#fff',
-  fontFamily: 'monospace',
-  textAlign: 'center',
-  minWidth: '120px'
+// 左側の操作エリアスタイル
+const leftUiStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: '30px',
+  left: '20px',
+  zIndex: 10,
+  cursor: 'pointer',
+  padding: '10px', // タップ領域を広げる
+};
+
+// 右側の操作エリアスタイル
+const rightUiStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: '30px',
+  right: '20px',
+  zIndex: 10,
+  cursor: 'pointer',
+  padding: '10px', // タップ領域を広げる
 };
